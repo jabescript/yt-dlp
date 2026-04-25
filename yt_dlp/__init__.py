@@ -965,6 +965,16 @@ def _real_main(argv=None):
 
     parser, opts, all_urls, ydl_opts = parse_options(argv)
 
+    if opts.gui:
+        from .gui import main as _gui_main
+        _gui_main()
+        return
+
+    if opts.web:
+        from .web import main as _web_main
+        _web_main()
+        return
+
     if print_extractor_information(opts, all_urls):
         return
 
