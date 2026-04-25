@@ -357,6 +357,14 @@ def create_parser():
         '-h', '--help', dest='print_help', action='store_true',
         help='Print this help text and exit')
     general.add_option(
+        '--gui',
+        action='store_true', dest='gui', default=False,
+        help='Launch the graphical user interface (requires tkinter)')
+    general.add_option(
+        '--web',
+        action='store_true', dest='web', default=False,
+        help='Launch the web-based GUI in your browser (no extra dependencies required)')
+    general.add_option(
         '--version',
         action='version',
         help='Print program version and exit')
