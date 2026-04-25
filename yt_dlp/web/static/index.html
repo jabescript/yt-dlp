@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>yt-dlp Web GUI</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,sans-serif;background:#0f0f0f;color:#e5e5e5;padding:28px 32px}
+h1{font-size:1.35rem;margin-bottom:22px;color:#fff;letter-spacing:-.4px}
+h1 em{color:#f04;font-style:normal}
+.row{display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
+input,select{background:#1c1c1c;border:1px solid #2e2e2e;color:#e5e5e5;padding:8px 10px;border-radius:6px;font-size:.9rem;outline:none;transition:border .15s}
+input:focus,select:focus{border-color:#f04}
+.url-in{flex:1;min-width:280px}
+button{background:#f04;color:#fff;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;font-size:.9rem;white-space:nowrap;transition:background .15s}
+button:hover{background:#c03}
+button.sec{background:#262626}
+button.sec:hover{background:#333}
+a.dl-btn{display:inline-block;background:#1a3a1a;color:#44cc44;border:1px solid #2a5a2a;padding:3px 10px;border-radius:4px;font-size:.78rem;text-decoration:none}
+a.dl-btn:hover{background:#224422}
+label{font-size:.83rem;color:#888;white-space:nowrap}
+table{width:100%;border-collapse:collapse;margin-top:18px;font-size:.87rem}
+th{text-align:left;padding:8px 10px;color:#666;border-bottom:1px solid #1e1e1e;font-weight:500}
+td{padding:8px 10px;border-bottom:1px solid #181818;vertical-align:middle}
+.badge{font-size:.76rem;padding:2px 9px;border-radius:4px;display:inline-block}
+.s-waiting    {background:#222;color:#777}
+.s-queued     {background:#162030;color:#5599cc}
+.s-downloading{background:#162216;color:#44bb44}
+.s-done       {background:#0d2b0d;color:#44cc44}
+.s-error      {background:#2b0d0d;color:#cc4444}
+.bar-wrap{background:#232323;border-radius:3px;height:5px;width:90px;display:inline-block;vertical-align:middle}
+.bar-fill{background:#f04;height:100%;border-radius:3px;transition:width .35s}
+.url-td{max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#888;font-size:.8rem}
+.dim{color:#555;font-size:.8rem}
+.empty{text-align:center;color:#444;padding:44px;font-size:.9rem}
+</style>
+</head>
+<body>
+<h1>yt-dlp <em>Web GUI</em></h1>
+
+<div class="row">
+  <label>URL</label>
+  <input id="url" class="url-in" type="text" placeholder="https://www.youtube.com/watch?v=..." />
+  <label>Format</label>
+  <select id="fmt">
+    <option>Best (default)</option>
+    <option>1080p</option>
+    <option>720p</option>
+    <option>480p</option>
+    <option>Audio only (MP3)</option>
+    <option>Audio only (M4A)</option>
+  </select>
+  <button onclick="addToQueue()">Add to Queue</button>
+  <button onclick="startAll()">&#9654; Download All</button>
+  <button class="sec" onclick="clearDone()">Clear Completed</button>
+</div>
+
+<table>
+  <thead><tr>
+    <th>URL</th><th>Format</th><th>Status</th><th>Progress</th><th>Speed</th><th>ETA</th><th>File</th>
+  </tr></thead>
+  <tbody id="q">
+    <tr id="empty"><td colspan="7" class="empty">No items yet -- paste a URL above and click Add to Queue</td></tr>
+  </tbody>
+</table>
+
+<script>
+const es = new EventSource('/api/events');
+es.onmessage = e => upsertRow(JSON.parse(e.data));
+
+async function addToQueue() {
+  const url = document.getElementById('url').value.trim();
+  if (!url) return alert('Enter a URL first.');
+  await fetch('/api/queue', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url, format: document.getElementById('fmt').value }),
+  });
+  document.getElementById('url').value = '';
+}
+
+async function startAll() {
+  await fetch('/api/start', { method: 'POST' });
+}
+
+async function clearDone() {
+  await fetch('/api/clear', { method: 'POST' });
+  document.querySelectorAll('#q tr[data-done]').forEach(r => r.remove());
+  if (!document.querySelector('#q tr[data-id]'))
+    document.getElementById('empty').style.display = '';
+}
+
+function upsertRow(job) {
+  document.getElementById('empty').style.display = 'none';
+  let row = document.getElementById('r' + job.id);
+  if (!row) {
+    row = document.createElement('tr');
+    row.id = 'r' + job.id;
+    row.dataset.id = job.id;
+    document.getElementById('q').appendChild(row);
+  }
+  const pct = job.progress || 0;
+  const done = job.status === 'Done' || job.status === 'Error';
+  if (done) row.dataset.done = '1'; else delete row.dataset.done;
+  if (job.status === 'Error') row.title = job.error || '';
+  const fileCell = job.status === 'Done' && job.filename
+    ? `<a class="dl-btn" href="/files/${encodeURIComponent(job.filename)}" download="${x(job.filename)}">Download</a>`
+    : '';
+  row.innerHTML = `
+    <td class="url-td" title="${x(job.url)}">${x(job.url)}</td>
+    <td class="dim">${x(job.format)}</td>
+    <td><span class="badge s-${job.status.toLowerCase()}">${x(job.status)}</span></td>
+    <td>
+      <span class="bar-wrap"><span class="bar-fill" style="width:${pct}%"></span></span>
+      <span class="dim" style="margin-left:6px">${pct > 0 ? pct.toFixed(0) + '%' : ''}</span>
+    </td>
+    <td class="dim">${x(job.speed)}</td>
+    <td class="dim">${x(job.eta)}</td>
+    <td>${fileCell}</td>
+  `;
+}
+
+function x(s) {
+  return String(s || '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+document.getElementById('url').addEventListener('keydown', e => {
+  if (e.key === 'Enter') addToQueue();
+});
+</script>
+</body>
+</html>
